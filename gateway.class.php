@@ -217,6 +217,15 @@ class Gateway {
 			$order->paymentStatus(Order::PAYMENT_PENDING, $cart_order_id);
 		}
 
+		if ($prcode != 0 || $srcode != 0) {
+			$error_str = "GP webpay gateway returned an error (prcode:$prcode srcode:$srcode).";
+			if ($prcode == 14) {
+				$error_str .= " Duplicate order number.";
+			}
+			$GLOBALS['gui']->setError($error_str);
+			$notes .= " ERROR: $error_str";
+		}
+
 		$transData['notes']			= $notes;
 		$transData['gateway']		= $_REQUEST['module'];
 		$transData['order_id']		= $cart_order_id;
