@@ -11,17 +11,17 @@
  * License:  GPL-3.0 http://opensource.org/licenses/GPL-3.0
  */
 
-use AdamStipak\Webpay\PaymentRequest;
+// use AdamStipak\Webpay\PaymentRequest;
+// require __DIR__ . '/vendor/autoload.php';
 
-require __DIR__ . '/vendor/autoload.php';
 require __DIR__ . '/signature.php';
 
 class Gateway {
 	private $_module;
 	private $_basket;
 
-	private $signer;
-	private $api;
+	// private $signer;
+	// private $api;
 
 	private $merchantNumber;
 	private $webpayUrl;
@@ -46,18 +46,18 @@ class Gateway {
 		error_log('module:' . json_encode($this->_module));
 
 		error_log('GPWebpay_dbg privkey:'.$this->privateKeyFilepath);
-		$this->signer = new \AdamStipak\Webpay\Signer(
-			$this->privateKeyFilepath,    // Path of private key.
-			$this->privateKeyPassword,    // Password for private key.
-			$this->publicKeyFilepath      // Path of public key.
-		);
+		// $this->signer = new \AdamStipak\Webpay\Signer(
+		// 	$this->privateKeyFilepath,    // Path of private key.
+		// 	$this->privateKeyPassword,    // Password for private key.
+		// 	$this->publicKeyFilepath      // Path of public key.
+		// );
 
-		$this->api = new \AdamStipak\Webpay\Api(
-			// $this->_module['merchantNumber'],    // Merchant number.
-			$this->merchantNumber,    // Merchant number.
-			$this->webpayUrl,         // URL of webpay.
-			$this->signer             // instance of \AdamStipak\Webpay\Signer.
-		);
+		// $this->api = new \AdamStipak\Webpay\Api(
+		// 	// $this->_module['merchantNumber'],    // Merchant number.
+		// 	$this->merchantNumber,    // Merchant number.
+		// 	$this->webpayUrl,         // URL of webpay.
+		// 	$this->signer             // instance of \AdamStipak\Webpay\Signer.
+		// );
 	}
 
 	##################################################
