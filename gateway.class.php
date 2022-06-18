@@ -10,20 +10,62 @@
  * Email:  sales@devellion.com
  * License:  GPL-3.0 http://opensource.org/licenses/GPL-3.0
  */
+
+use AdamStipak\Webpay\PaymentRequest;
+
+require __DIR__ . '/vendor/autoload.php';
+require __DIR__ . '/signature.php';
+
 class Gateway {
 	private $_module;
 	private $_basket;
 
+	private $signer;
+	private $api;
+
+	private $merchantNumber;
+	private $webpayUrl;
+	private $privateKeyFilepath;
+	private $privateKeyPassword;
+	private $publicKeyFilepath;
+	private $publicGpKeyFilepath;
+
 	public function __construct($module = false, $basket = false) {
 		$this->_module	= $module;
 		$this->_basket =& $GLOBALS['cart']->basket;
+
+		$this->merchantNumber = $this->_module['merchantNumber'];
+		$this->privateKeyPassword  = $this->_module['privateKeyPassword'];
+		$this->privateKeyFilepath  = __DIR__ . '/keys/' . $this->_module['privateKeyFilename'];
+		$this->publicKeyFilepath   = __DIR__ . '/keys/' . $this->_module['publicKeyFilename'];
+		$this->publicGpKeyFilepath = __DIR__ . '/keys/' . $this->_module['publicGpKeyFilename'];
+		$this->webpayUrl = $this->_module['environment'] == 'testing'
+			? 'https://test.3dsecure.gpwebpay.com/pgw/order.do'
+			: 'https://3dsecure.gpwebpay.com/pgw/order.do';
+		error_log('environment:' . $this->_module['environment']);
+		error_log('module:' . json_encode($this->_module));
+
+		error_log('GPWebpay_dbg privkey:'.$this->privateKeyFilepath);
+		$this->signer = new \AdamStipak\Webpay\Signer(
+			$this->privateKeyFilepath,    // Path of private key.
+			$this->privateKeyPassword,    // Password for private key.
+			$this->publicKeyFilepath      // Path of public key.
+		);
+
+		$this->api = new \AdamStipak\Webpay\Api(
+			// $this->_module['merchantNumber'],    // Merchant number.
+			$this->merchantNumber,    // Merchant number.
+			$this->webpayUrl,         // URL of webpay.
+			$this->signer             // instance of \AdamStipak\Webpay\Signer.
+		);
 	}
 
 	##################################################
 
 	public function transfer() {
+		error_log('GPWebpay_dbg transfer()');
 		$transfer	= array(
-			'action'	=> ($this->_module['checkoutMode']=='single') ? 'https://www.2checkout.com/checkout/spurchase' : 'https://www2.2checkout.com/2co/buyer/purchase',
+			'action'	=> $this->webpayUrl,
 			'method'	=> 'post',
 			'target'	=> '_self',
 			'submit'	=> 'auto',
@@ -32,85 +74,143 @@ class Gateway {
 	}
 
 	public function repeatVariables() {
-		$i = 1;
-		/* I don't think this is required as it doesn't have to add up if I am wrong blame
-		$discount	= 0;
-		if ($this->_basket['discount'] > 0) {
-			$count		= count($this->_basket['contents']);
-			$discount	= ($this->_basket['discount']/$count);
+		return false;
+	}
+
+	private static function merordernum_to_cartorderid($merordernum) {
+		// Put back the two '-'
+		$res = $merordernum;
+		$res = substr_replace($res, '-', 12, 0);
+		$res = substr_replace($res, '-', 6, 0);
+		return $res;
+	}
+	private static function cartorderid_to_merordernum($cartorderid) {
+		// GP Webpay's MERORDERNUM may contain only digits
+		return str_replace("-", "", $cartorderid);
+	}
+	private static function merordernum_to_ordernumber($merordernum) {
+		// GP Webpay's ORDERNUMBER has a limit of 15, digits-only
+		// So we will cut out the last digit of the 16-digit CubeCart's order_id,
+		// which consists of 6 digits for date, 6 digits for time, 4 random digits
+		// And the last one of the 4 random digits is cut off here. which shouldn't cause any problem.
+		return substr($merordernum, 0, 15);
+	}
+	private static function currency_str_to_code($currencyStr) {
+		switch ($currencyStr) {
+			case 'EUR': return 978;
+			case 'CZK': return 203;
+			case 'GBP': return 826;
+			case 'HUF': return 348;
+			case 'PLN': return 985;
+			case 'RUB': return 643;
+			case 'USD': return 840;
 		}
-		*/
-		foreach ($this->_basket['contents'] as $product) {
-			$hidden['c_prod_'.$i] 			= $product['id'].','.(int)$product['quantity'];
-			$hidden['c_name_'.$i] 			= substr($product['name'], 0, 128);
-			$hidden['c_description_'.$i] 	= $product['description'];
-			$hidden['c_price_'.$i] 			= $product['total_price_each'];
-			$hidden['c_tangible_'.$i] 	= ($product['digital']) ? 'N' : 'Y';
-			++$i;
-		}
-		return (isset($hidden)) ? $hidden : false;
+		trigger_error("Currency '$currencyStr' not supported by the GPWebpay module.", E_USER_ERROR);	
 	}
 
 	public function fixedVariables() {
+		error_log('GPWebpay_dbg fixedVariables()');
 		$GLOBALS['config']->set('config', 'csrf', '0'); // Prevent token field
+
+		error_log('GPWebpay_dbg transfer() basket:' . json_encode($this->_basket));
+		$order_id_merchant = self::cartorderid_to_merordernum($this->_basket['cart_order_id']); // GP Webpay's MERORDERNUM may contain only digits
+		// $order_id_merchant = "".rand(1000000, 9999999);
+		error_log('GPWebpay_dbg transfer() order_id_merchant:' . $order_id_merchant);
+		// $order_id_a = explode('-', $this->_basket['cart_order_id']);
+		// $order_id = $order_id_a[0] . $order_id_a[2];
+		$order_id = self::merordernum_to_ordernumber($order_id_merchant);
+
+		// $request = new PaymentRequest(
+		// 	$order_id,
+		// 	$this->_basket['total'],
+		// 	PaymentRequest::EUR,
+		// 	1,
+		// 	$GLOBALS['storeURL'].'/index.php?_g=rm&type=gateway&cmd=process&module=GPWebpay',
+		// 	$order_id);
+
+		// $url = $this->api->createPaymentRequestUrl($request);
+		// $params = $this->api->createPaymentParam($request);
+
+		// Use the CubeCart's default currency also for the GPWebpay's currency
+		$currency_str = $GLOBALS['config']->get('config', 'default_currency');
+		$currency_code = self::currency_str_to_code($currency_str);
+
+		$operation = 'CREATE_ORDER';
+		// $currency_code = '978';
+		$depositflag = '1';
+		$amount_total = (int) round(floatval($this->_basket['total']) * 100);
+		// $amount_total = int(float($this->_basket['total']) * 100);
+		// $return_url = 'http://localhost:80/demoshop_code/index.php?action=response';
+		$return_url = $GLOBALS['storeURL'].'/index.php?_g=rm&type=gateway&cmd=process&module=GPWebpay';
+		$digest_str = implode('|', [$this->merchantNumber, $operation, $order_id, $amount_total, $currency_code, $depositflag, $order_id_merchant, $return_url]);
+		$sign = new CSignature($this->privateKeyFilepath, $this->privateKeyPassword, $this->publicKeyFilepath);
+		$signature = $sign->sign($digest_str);
+		// error_log('GPWebpay_dbg transfer() url:'.$url);
+
 		$hidden	= array(
-			'id_type'				=> 1,
-			'fixed'					=> 'Y',
-			'sid' 					=> $this->_module['acNo'],
-			'total' 				=> $this->_basket['total'],
-			'cart_order_id' 		=> $this->_basket['cart_order_id'],
-			'lang' 					=> substr($GLOBALS['config']->get('config', 'default_language'),0,2)=='es' ? 'sp' : 'en',
-			'merchant_order_id' 	=> $this->_basket['cart_order_id'],
-			'pay_method' 			=> '',
-			'skip_landing' 			=> 1,
-			
-			'x_receipt_link_url'	=> $GLOBALS['storeURL'].'/index.php?_g=rm&type=gateway&cmd=process&module=2Checkout',
-			
-			'card_holder_name' 		=> $this->_basket['billing_address']['first_name'].' '.$this->_basket['billing_address']['last_name'],
-			
-			'phone' 				=> $this->_basket['billing_address']['phone'],
-			'email' 				=> $this->_basket['billing_address']['email'],
-			
-			'street_address' 		=> $this->_basket['billing_address']['line1'],
-			'street_address2' 		=> $this->_basket['billing_address']['line2'],
-			'city' 					=> $this->_basket['billing_address']['town'],
-			'state' 				=> ($this->_basket['billing_address']['country_iso']=="US" || $this->_basket['billing_address']['country_iso']=="CA") ? $this->_basket['billing_address']['state'] : "XX",
-			'zip' 					=> $this->_basket['billing_address']['postcode'],
-			'country' 				=> $this->_basket['billing_address']['country'],
-			
-			'ship_name' 			=> $this->_basket['delivery_address']['first_name'].' '.$this->_basket['delivery_address']['last_name'],
-			'ship_steet_address' 	=> $this->_basket['delivery_address']['line1'],
-			'ship_steet_address2'	=> $this->_basket['billing_address']['line2'],
-			'ship_city' 			=> $this->_basket['delivery_address']['town'],
-			'ship_country' 			=> $this->_basket['delivery_address']['country'],
-			'ship_state' 			=> $this->_basket['delivery_address']['state'],
-			'ship_zip' 				=> $this->_basket['delivery_address']['postcode'],
+			'MERCHANTNUMBER' => $this->merchantNumber,
+			'OPERATION' => $operation,
+			'ORDERNUMBER' => $order_id,
+			'AMOUNT' => $amount_total,
+			'CURRENCY' => $currency_code,
+			'DEPOSITFLAG' => $depositflag,
+			'MERORDERNUM' => $order_id_merchant,
+			'URL' => $return_url,
+			'DIGEST' => $signature,
 		);
 		
-		if($this->_module['testMode']=="Y") {
-			$hidden['demo'] = 'Y';	
-		}
-
 		return (isset($hidden)) ? $hidden : false;
 	}
 
 	##################################################
 
 	public function call() {
+		error_log('GPWebpay_dbg call()');
 		return false;
 	}
 
 	public function process() {
+		error_log('GPWebpay_dbg process() GET:'.json_encode($_REQUEST));
+		$operation         = $_REQUEST['OPERATION'];
+		$order_id          = $_REQUEST['ORDERNUMBER'];
+		$order_id_merchant = $_REQUEST['MERORDERNUM'];
+		$prcode            = $_REQUEST['PRCODE'];
+		$srcode            = $_REQUEST['SRCODE'];
+		$resulttext        = $_REQUEST['RESULTTEXT'];
+		$digest            = $_REQUEST['DIGEST'];
+		$digest1           = $_REQUEST['DIGEST1'];
+
+		$sign = new CSignature($this->privateKeyFilepath, $this->privateKeyPassword, $this->publicGpKeyFilepath);
+		$digest_str = implode('|', [$operation, $order_id, $order_id_merchant, $prcode, $srcode, $resulttext]);
+		$verify = $sign->verify($digest_str, $digest);
+		error_log('GPWebpay_dbg process() digest_str:'.$digest_str);
+		error_log('GPWebpay_dbg process() digest:'.$digest);
+		error_log('GPWebpay_dbg process() verify:'.$verify);
+		$digest1_str = implode('|', [$operation, $order_id, $order_id_merchant, $prcode, $srcode, $resulttext, $this->merchantNumber]);
+		$verify1 = $sign->verify($digest1_str, $digest1);
+		error_log('GPWebpay_dbg process() verify1:'.$verify1);
+
+		$cart_order_id = self::merordernum_to_cartorderid($order_id_merchant);
+		error_log('GPWebpay_dbg process() cart_order_id:'.$cart_order_id);
+
 		$order				= Order::getInstance();
-		$cart_order_id		= $_REQUEST['cart_id'];
+		error_log('GPWebpay_dbg process() 1');
 		$order_summary		= $order->getSummary($cart_order_id);
+		error_log('GPWebpay_dbg process() 2');
+		error_log('GPWebpay_dbg process() order_details:'.json_encode($order->getOrderDetails($cart_order_id)));
+		error_log('GPWebpay_dbg process() order_id:'.$order_id);
+		error_log('GPWebpay_dbg process() order_id_merchant:'.$order_id_merchant);
+		error_log('GPWebpay_dbg process() order_summary:'.$order_summary);
+		error_log('GPWebpay_dbg process() credit_card_processed:'.$_REQUEST['credit_card_processed']);
 		
-		if($_REQUEST['credit_card_processed'] == 'Y'){
+		if($prcode==0 && $srcode==0 && $verify==1){
+			error_log('GPWebpay_dbg process() order was successfully processed');
 			$notes 	= 'Card was successfully processed.';
 			$status = 'Processed';
 			$order->orderStatus(Order::ORDER_PROCESS, $cart_order_id);
 			$order->paymentStatus(Order::PAYMENT_SUCCESS, $cart_order_id);
 		} else {
+			error_log('GPWebpay_dbg process() order was not processed');
 			$notes = 'Card has not yet been processed and is currently pending.';
 			$status = 'Pending';
 			$order->orderStatus(Order::ORDER_PENDING, $cart_order_id);
@@ -125,6 +225,7 @@ class Gateway {
 		$transData['status']		= $status;
 		$transData['customer_id']	= $order_summary['customer_id'];
 		$transData['extra']			= '';
+		error_log('GPWebpay_dbg process() transData:'.json_encode($transData));
 		$order->logTransaction($transData);
 
 
@@ -135,6 +236,7 @@ class Gateway {
 	}
 
 	public function form() {
+		error_log('GPWebpay_dbg form()');
 		return false;
 	}
 }

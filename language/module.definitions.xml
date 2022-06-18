@@ -11,16 +11,21 @@
  * License:  GPL-3.0 http://opensource.org/licenses/GPL-3.0
 -->
 <definitions version="1.0">
- <group name="2checkout">
-  <string name="account_no"><![CDATA[Account Number]]></string>
+ <group name="gpwebpay">
+  <string name="merchant_number"><![CDATA[GPWebpay Merchant Number]]></string>
+  <string name="keys_info"><![CDATA[GPWebpay Keys - all key files should be located in "/modules/gateway/GPWebpay/keys"]]></string>
+  <string name="private_key_password"><![CDATA[Private key password]]></string>
+  <string name="private_key_filename"><![CDATA[Private key filename (e.g. "gpwebpay-private.key")]]></string>
+  <string name="public_key_filename"><![CDATA[Public key filename (e.g. "gpwebpay-public.key")]]></string>
+  <string name="public_gp_key_filename"><![CDATA[Public GPWebpay key filename (e.g. "gpe.signing_test.pem")]]></string>
   <string name="module_description"><![CDATA[&#8220;Start selling in minutes&#8221;]]></string>
-  <string name="module_title"><![CDATA[2Checkout]]></string>
-  <string name="2checkout_settings"><![CDATA[2Checkout Settings]]></string>
+  <string name="module_title"><![CDATA[GPWebpay]]></string>
+  <string name="gpwebpay_settings"><![CDATA[GPWebpay Settings]]></string>
   <string name="direct_return"><![CDATA[Direct Return]]></string>
   <string name="direct_return_value"><![CDATA[Header Redirect (Your URL)]]></string>
   <string name="approved_url"><![CDATA[Approved URL]]></string>
-  <string name="mode_checkout"><![CDATA[2Checkout Mode]]></string>
-  <string name="single_page"><![CDATA[Single Page (Recommended)]]></string>
-  <string name="multi_page"><![CDATA[Multiple Pages]]></string>
+  <string name="environment"><![CDATA[GPWebpay Environment]]></string>
+  <string name="environment_testing"><![CDATA[Testing]]></string>
+  <string name="environment_production"><![CDATA[Production]]></string>
  </group>
 </definitions>
