@@ -23,7 +23,7 @@ class Gateway {
 	// private $signer;
 	// private $api;
 
-	private $dbgEnabled;
+	private $dbgEnabled = true;
 	private $merchantNumber;
 	private $webpayUrl;
 	private $privateKeyFilepath;
@@ -41,7 +41,6 @@ class Gateway {
 		$this->_module	= $module;
 		$this->_basket =& $GLOBALS['cart']->basket;
 
-		$this->dbgEnabled = true;
 		$this->merchantNumber = $this->_module['merchantNumber'];
 		$this->privateKeyPassword  = $this->_module['privateKeyPassword'];
 		$this->privateKeyFilepath  = __DIR__ . '/keys/' . $this->_module['privateKeyFilename'];
@@ -116,17 +115,6 @@ class Gateway {
 		$ordernumber = self::cartorderid_to_ordernumber($this->_basket['cart_order_id']);
 		$merchant_data = $this->_basket['cart_order_id'];
 
-		// $request = new PaymentRequest(
-		// 	$ordernumber,
-		// 	$this->_basket['total'],
-		// 	PaymentRequest::EUR,
-		// 	1,
-		// 	$GLOBALS['storeURL'].'/index.php?_g=rm&type=gateway&cmd=process&module=GPWebpay',
-		// 	$ordernumber);
-
-		// $url = $this->api->createPaymentRequestUrl($request);
-		// $params = $this->api->createPaymentParam($request);
-
 		// Use the CubeCart's default currency also for the GPWebpay's currency
 		$currency_str = $GLOBALS['config']->get('config', 'default_currency');
 		$currency_code = self::currency_str_to_code($currency_str);
@@ -155,6 +143,20 @@ class Gateway {
 			'MD' => $merchant_data,
 			'DIGEST' => $signature,
 		);
+
+		// $request = new PaymentRequest(
+		// 	$ordernumber,
+		// 	$this->_basket['total'],
+		// 	$currency_code,
+		// 	$depositflag,
+		// 	$GLOBALS['storeURL'].'/index.php?_g=rm&type=gateway&cmd=process&module=GPWebpay',
+		// 	null,
+		//  $merchant_data);
+
+		// $url = $this->api->createPaymentRequestUrl($request);
+		// $hidden = $this->api->createPaymentParam($request);
+		// self::dbg("createPaymentParam(): ".json_encode($hidden));
+
 		
 		return (isset($hidden)) ? $hidden : false;
 	}
