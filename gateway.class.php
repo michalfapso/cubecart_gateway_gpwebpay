@@ -86,23 +86,14 @@ class Gateway {
 		return false;
 	}
 
-	private static function merordernum_to_cartorderid($merordernum) {
-		// Put back the two '-'
-		$res = $merordernum;
-		$res = substr_replace($res, '-', 12, 0);
-		$res = substr_replace($res, '-', 6, 0);
-		return $res;
-	}
-	private static function cartorderid_to_merordernum($cartorderid) {
+	private static function cartorderid_to_ordernumber($cartorderid) {
 		// GP Webpay's MERORDERNUM may contain only digits
-		return str_replace("-", "", $cartorderid);
-	}
-	private static function merordernum_to_ordernumber($merordernum) {
+		$id = str_replace("-", "", $cartorderid);
 		// GP Webpay's ORDERNUMBER has a limit of 15, digits-only
 		// So we will cut out the last digit of the 16-digit CubeCart's order_id,
 		// which consists of 6 digits for date, 6 digits for time, 4 random digits
 		// And the last one of the 4 random digits is cut off here. which shouldn't cause any problem.
-		return substr($merordernum, 0, 15);
+		return substr($id, 0, 15);
 	}
 	private static function currency_str_to_code($currencyStr) {
 		switch ($currencyStr) {
@@ -122,20 +113,16 @@ class Gateway {
 		$GLOBALS['config']->set('config', 'csrf', '0'); // Prevent token field
 
 		self::dbg('GPWebpay_dbg transfer() basket:' . json_encode($this->_basket));
-		$order_id_merchant = self::cartorderid_to_merordernum($this->_basket['cart_order_id']); // GP Webpay's MERORDERNUM may contain only digits
-		// $order_id_merchant = "".rand(1000000, 9999999);
-		self::dbg('GPWebpay_dbg transfer() order_id_merchant:' . $order_id_merchant);
-		// $order_id_a = explode('-', $this->_basket['cart_order_id']);
-		// $order_id = $order_id_a[0] . $order_id_a[2];
-		$order_id = self::merordernum_to_ordernumber($order_id_merchant);
+		$ordernumber = self::cartorderid_to_ordernumber($this->_basket['cart_order_id']);
+		$merchant_data = $this->_basket['cart_order_id'];
 
 		// $request = new PaymentRequest(
-		// 	$order_id,
+		// 	$ordernumber,
 		// 	$this->_basket['total'],
 		// 	PaymentRequest::EUR,
 		// 	1,
 		// 	$GLOBALS['storeURL'].'/index.php?_g=rm&type=gateway&cmd=process&module=GPWebpay',
-		// 	$order_id);
+		// 	$ordernumber);
 
 		// $url = $this->api->createPaymentRequestUrl($request);
 		// $params = $this->api->createPaymentParam($request);
@@ -152,7 +139,7 @@ class Gateway {
 		// $amount_total = int(float($this->_basket['total']) * 100);
 		// $return_url = 'http://localhost:80/demoshop_code/index.php?action=response';
 		$return_url = $GLOBALS['storeURL'].'/index.php?_g=rm&type=gateway&cmd=process&module=GPWebpay';
-		$digest_str = implode('|', [$this->merchantNumber, $operation, $order_id, $amount_total, $currency_code, $depositflag, $order_id_merchant, $return_url]);
+		$digest_str = implode('|', [$this->merchantNumber, $operation, $ordernumber, $amount_total, $currency_code, $depositflag, $return_url, $merchant_data]);
 		$sign = new CSignature($this->privateKeyFilepath, $this->privateKeyPassword, $this->publicKeyFilepath);
 		$signature = $sign->sign($digest_str);
 		// self::dbg('GPWebpay_dbg transfer() url:'.$url);
@@ -160,12 +147,12 @@ class Gateway {
 		$hidden	= array(
 			'MERCHANTNUMBER' => $this->merchantNumber,
 			'OPERATION' => $operation,
-			'ORDERNUMBER' => $order_id,
+			'ORDERNUMBER' => $ordernumber,
 			'AMOUNT' => $amount_total,
 			'CURRENCY' => $currency_code,
 			'DEPOSITFLAG' => $depositflag,
-			'MERORDERNUM' => $order_id_merchant,
 			'URL' => $return_url,
+			'MD' => $merchant_data,
 			'DIGEST' => $signature,
 		);
 		
@@ -183,7 +170,7 @@ class Gateway {
 		self::dbg('GPWebpay_dbg process() GET:'.json_encode($_REQUEST));
 		$operation         = $_REQUEST['OPERATION'];
 		$order_id          = $_REQUEST['ORDERNUMBER'];
-		$order_id_merchant = $_REQUEST['MERORDERNUM'];
+		$merchant_data     = $_REQUEST['MD'];
 		$prcode            = $_REQUEST['PRCODE'];
 		$srcode            = $_REQUEST['SRCODE'];
 		$resulttext        = $_REQUEST['RESULTTEXT'];
@@ -191,23 +178,23 @@ class Gateway {
 		$digest1           = $_REQUEST['DIGEST1'];
 
 		$sign = new CSignature($this->privateKeyFilepath, $this->privateKeyPassword, $this->publicGpKeyFilepath);
-		$digest_str = implode('|', [$operation, $order_id, $order_id_merchant, $prcode, $srcode, $resulttext]);
+		$digest_str = implode('|', [$operation, $order_id, $merchant_data, $prcode, $srcode, $resulttext]);
 		$verify = $sign->verify($digest_str, $digest);
 		self::dbg('GPWebpay_dbg process() digest_str:'.$digest_str);
 		self::dbg('GPWebpay_dbg process() digest:'.$digest);
 		self::dbg('GPWebpay_dbg process() verify:'.$verify);
-		$digest1_str = implode('|', [$operation, $order_id, $order_id_merchant, $prcode, $srcode, $resulttext, $this->merchantNumber]);
+		$digest1_str = implode('|', [$operation, $order_id, $merchant_data, $prcode, $srcode, $resulttext, $this->merchantNumber]);
 		$verify1 = $sign->verify($digest1_str, $digest1);
 		self::dbg('process() verify1:'.$verify1);
 
-		$cart_order_id = self::merordernum_to_cartorderid($order_id_merchant);
+		$cart_order_id = $merchant_data;
 		self::dbg('process() cart_order_id:'.$cart_order_id);
 
 		$order				= Order::getInstance();
 		$order_summary		= $order->getSummary($cart_order_id);
 		self::dbg('process() order_details:'.json_encode($order->getOrderDetails($cart_order_id)));
 		self::dbg('process() order_id:'.$order_id);
-		self::dbg('process() order_id_merchant:'.$order_id_merchant);
+		self::dbg('process() merchant_data:'.$merchant_data);
 		self::dbg('process() order_summary:'.$order_summary);
 		self::dbg('process() credit_card_processed:'.$_REQUEST['credit_card_processed']);
 		
