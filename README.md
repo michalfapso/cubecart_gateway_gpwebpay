@@ -21,7 +21,6 @@
 
 # Troubleshooting
 
-For a list of `prcode` and `srcode` errors, 
 The current list of all `prcode` and `srcode` errors can be found in the "Download" section of the GP
 webpay Portal:
 - testing: https://test.portal.gpwebpay.com/portal/anon/login.xhtml
